@@ -1,6 +1,6 @@
 #include <iostream>
+#include <string>
 #include <winsock2.h>
-#include <cstring>
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -68,32 +68,43 @@ int main() {
 
     char buffer[1024];
 
-    int bytesReceived = recv(
-        clientSocket,
-        buffer,
-        sizeof(buffer) - 1,
-        0
-    );
+    while (true) {
+        int bytesReceived = recv(
+            clientSocket,
+            buffer,
+            sizeof(buffer) - 1,
+            0
+        );
 
-    if (bytesReceived > 0) {
+        if (bytesReceived == 0) {
+            cout << "Client disconnected.\n";
+            break;
+        }
+
+        if (bytesReceived == SOCKET_ERROR) {
+            cout << "Receive failed.\n";
+            break;
+        }
+
         buffer[bytesReceived] = '\0';
 
         cout << "Client says: "
              << buffer << "\n";
 
-        string response = "Hello from the server!";
+        string response =
+            "Server received: " + string(buffer);
 
-        send(
+        int bytesSent = send(
             clientSocket,
             response.c_str(),
             static_cast<int>(response.size()),
             0
         );
 
-        cout << "Reply sent!\n";
-    }
-    else {
-        cout << "Failed to receive message.\n";
+        if (bytesSent == SOCKET_ERROR) {
+            cout << "Send failed.\n";
+            break;
+        }
     }
 
     closesocket(clientSocket);

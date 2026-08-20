@@ -45,48 +45,54 @@ int main() {
         return 1;
     }
 
-    cout << "Connected to server!\n";
+    cout << "=================================\n";
+    cout << "       Connected to Server       \n";
+    cout << "=================================\n";
 
-    string message;
+    while (true) {
+        string message;
 
-    cout << "Enter a message: ";
-    getline(cin >> ws, message);
+        cout << "\nEnter message (type 'exit' to quit): ";
+        getline(cin >> ws, message);
 
-    int bytesSent = send(
-        clientSocket,
-        message.c_str(),
-        static_cast<int>(message.size()),
-        0
-    );
+        if (message == "exit") {
+            break;
+        }
 
-    if (bytesSent == SOCKET_ERROR) {
-        cout << "Failed to send message.\n";
-        closesocket(clientSocket);
-        WSACleanup();
-        return 1;
-    }
+        int bytesSent = send(
+            clientSocket,
+            message.c_str(),
+            static_cast<int>(message.size()),
+            0
+        );
 
-    cout << "Message sent!\n";
+        if (bytesSent == SOCKET_ERROR) {
+            cout << "Failed to send message.\n";
+            break;
+        }
 
-    char buffer[1024];
+        char buffer[1024];
 
-    int bytesReceived = recv(
-        clientSocket,
-        buffer,
-        sizeof(buffer) - 1,
-        0
-    );
+        int bytesReceived = recv(
+            clientSocket,
+            buffer,
+            sizeof(buffer) - 1,
+            0
+        );
 
-    if (bytesReceived == SOCKET_ERROR) {
-        cout << "Failed to receive server reply.\n";
-    }
-    else if (bytesReceived == 0) {
-        cout << "Server closed the connection.\n";
-    }
-    else {
+        if (bytesReceived == SOCKET_ERROR) {
+            cout << "Failed to receive server reply.\n";
+            break;
+        }
+
+        if (bytesReceived == 0) {
+            cout << "Server disconnected.\n";
+            break;
+        }
+
         buffer[bytesReceived] = '\0';
 
-        cout << "Server says: "
+        cout << "Server: "
              << buffer << "\n";
     }
 
