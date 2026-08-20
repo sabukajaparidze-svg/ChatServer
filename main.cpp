@@ -11,6 +11,9 @@
 
 using namespace std;
 
+const int MAX_USERNAME_LENGTH = 20;
+const int MAX_MESSAGE_LENGTH = 500;
+
 struct Client {
     SOCKET socket;
     string username;
@@ -26,6 +29,16 @@ void sendToClient(SOCKET clientSocket, const string& message) {
         static_cast<int>(message.size()),
         0
     );
+}
+
+bool usernameExists(const string& username) {
+    for (const Client& client : clients) {
+        if (client.username == username) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void broadcastMessage(
@@ -127,34 +140,39 @@ void handleCommand(
             privateText.erase(0, 1);
         }
 
-        bool sent = sendPrivateMessage(
+        if (privateText.length() > MAX_MESSAGE_LENGTH) {
+            sendToClient(
+                clientSocket,
+                "Private message is too long."
+            );
+
+            return;
+        }
+
+        if (!sendPrivateMessage(
             username,
             target,
             privateText
-        );
-
-        if (sent) {
-            sendToClient(
-                clientSocket,
-                "[Private to " + target + "] " + privateText
-            );
-        }
-        else {
+        )) {
             sendToClient(
                 clientSocket,
                 "User '" + target + "' is not online."
             );
+
+            return;
         }
+
+        sendToClient(
+            clientSocket,
+            "[Private to " + target + "] " + privateText
+        );
 
         return;
     }
 
-    string formattedMessage =
-        "[" + username + "] " + message;
-
-    broadcastMessage(
-        formattedMessage,
-        clientSocket
+    sendToClient(
+        clientSocket,
+        "Unknown command. Type /help."
     );
 }
 
@@ -177,8 +195,30 @@ void handleClient(SOCKET clientSocket) {
 
     string username = buffer;
 
+    if (username.empty() ||
+        username.length() > MAX_USERNAME_LENGTH) {
+
+        sendToClient(
+            clientSocket,
+            "Invalid username. Maximum length is 20 characters."
+        );
+
+        closesocket(clientSocket);
+        return;
+    }
+
     {
         lock_guard<mutex> lock(clientsMutex);
+
+        if (usernameExists(username)) {
+            sendToClient(
+                clientSocket,
+                "Username already taken."
+            );
+
+            closesocket(clientSocket);
+            return;
+        }
 
         clients.push_back({
             clientSocket,
@@ -209,12 +249,21 @@ void handleClient(SOCKET clientSocket) {
 
         string message = buffer;
 
-        cout << "[" << username << "] "
-             << message << "\n";
-
         if (message == "exit") {
             break;
         }
+
+        if (message.length() > MAX_MESSAGE_LENGTH) {
+            sendToClient(
+                clientSocket,
+                "Message is too long. Maximum is 500 characters."
+            );
+
+            continue;
+        }
+
+        cout << "[" << username << "] "
+             << message << "\n";
 
         if (!message.empty() && message[0] == '/') {
             handleCommand(
@@ -261,7 +310,11 @@ void handleClient(SOCKET clientSocket) {
 int main() {
     WSADATA wsaData;
 
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+    if (WSAStartup(
+        MAKEWORD(2, 2),
+        &wsaData
+    ) != 0) {
+
         cout << "WSAStartup failed.\n";
         return 1;
     }
@@ -289,22 +342,28 @@ int main() {
         (sockaddr*)&serverAddress,
         sizeof(serverAddress)
     ) == SOCKET_ERROR) {
+
         cout << "Bind failed.\n";
+
         closesocket(serverSocket);
         WSACleanup();
+
         return 1;
     }
 
     if (listen(serverSocket, 10) == SOCKET_ERROR) {
         cout << "Listen failed.\n";
+
         closesocket(serverSocket);
         WSACleanup();
+
         return 1;
     }
 
     cout << "=================================\n";
     cout << "       Chat Server Started       \n";
     cout << "=================================\n";
+    cout << "Port: 55000\n";
     cout << "Waiting for clients...\n";
 
     while (true) {

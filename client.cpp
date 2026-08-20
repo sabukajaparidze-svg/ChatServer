@@ -35,7 +35,11 @@ void receiveMessages(SOCKET clientSocket) {
 int main() {
     WSADATA wsaData;
 
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+    if (WSAStartup(
+        MAKEWORD(2, 2),
+        &wsaData
+    ) != 0) {
+
         cout << "WSAStartup failed.\n";
         return 1;
     }
@@ -68,9 +72,12 @@ int main() {
         (sockaddr*)&serverAddress,
         sizeof(serverAddress)
     ) == SOCKET_ERROR) {
+
         cout << "Connection failed.\n";
+
         closesocket(clientSocket);
         WSACleanup();
+
         return 1;
     }
 
@@ -82,6 +89,15 @@ int main() {
 
     cout << "Enter your username: ";
     getline(cin, username);
+
+    if (username.empty()) {
+        cout << "Username cannot be empty.\n";
+
+        closesocket(clientSocket);
+        WSACleanup();
+
+        return 1;
+    }
 
     send(
         clientSocket,
