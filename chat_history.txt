@@ -1,5 +1,0 @@
-[00:56:20] *** Saba joined the chat ***
-[00:56:28] *** Alex joined the chat ***
-[00:56:42] [Saba] Hello Alex
-[00:56:56] [Alex] Hey Saba
-[00:57:05] [Private] [Alex -> Alex] private test
