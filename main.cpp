@@ -1,13 +1,40 @@
 #include <iostream>
+#include <string>
 #include <thread>
+#include <vector>
+#include <mutex>
+#include <algorithm>
 #include <winsock2.h>
 
 #pragma comment(lib, "ws2_32.lib")
 
 using namespace std;
 
+vector<SOCKET> clients;
+mutex clientsMutex;
+
+void broadcastMessage(const string& message, SOCKET senderSocket) {
+    lock_guard<mutex> lock(clientsMutex);
+
+    for (SOCKET client : clients) {
+        if (client != senderSocket) {
+            send(
+                client,
+                message.c_str(),
+                static_cast<int>(message.size()),
+                0
+            );
+        }
+    }
+}
+
 void handleClient(SOCKET clientSocket) {
     cout << "A client connected!\n";
+
+    {
+        lock_guard<mutex> lock(clientsMutex);
+        clients.push_back(clientSocket);
+    }
 
     char buffer[1024];
 
@@ -26,17 +53,27 @@ void handleClient(SOCKET clientSocket) {
 
         buffer[bytesReceived] = '\0';
 
+        string message = buffer;
+
         cout << "Client says: "
-             << buffer << "\n";
+             << message << "\n";
 
-        string response =
-            "Server received: " + string(buffer);
+        string broadcast =
+            "Client: " + message;
 
-        send(
-            clientSocket,
-            response.c_str(),
-            static_cast<int>(response.size()),
-            0
+        broadcastMessage(broadcast, clientSocket);
+    }
+
+    {
+        lock_guard<mutex> lock(clientsMutex);
+
+        clients.erase(
+            remove(
+                clients.begin(),
+                clients.end(),
+                clientSocket
+            ),
+            clients.end()
         );
     }
 

@@ -1,11 +1,36 @@
 #include <iostream>
 #include <string>
+#include <thread>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
 #pragma comment(lib, "ws2_32.lib")
 
 using namespace std;
+
+void receiveMessages(SOCKET clientSocket) {
+    char buffer[1024];
+
+    while (true) {
+        int bytesReceived = recv(
+            clientSocket,
+            buffer,
+            sizeof(buffer) - 1,
+            0
+        );
+
+        if (bytesReceived <= 0) {
+            cout << "\nServer disconnected.\n";
+            break;
+        }
+
+        buffer[bytesReceived] = '\0';
+
+        cout << "\n" << buffer << "\n";
+        cout << "Enter message: ";
+        cout.flush();
+    }
+}
 
 int main() {
     WSADATA wsaData;
@@ -15,7 +40,11 @@ int main() {
         return 1;
     }
 
-    SOCKET clientSocket = socket(AF_INET, SOCK_STREAM, 0);
+    SOCKET clientSocket = socket(
+        AF_INET,
+        SOCK_STREAM,
+        0
+    );
 
     if (clientSocket == INVALID_SOCKET) {
         cout << "Socket creation failed.\n";
@@ -49,11 +78,16 @@ int main() {
     cout << "       Connected to Server       \n";
     cout << "=================================\n";
 
+    thread receiver(
+        receiveMessages,
+        clientSocket
+    );
+
     while (true) {
         string message;
 
-        cout << "\nEnter message (type 'exit' to quit): ";
-        getline(cin >> ws, message);
+        cout << "Enter message: ";
+        getline(cin, message);
 
         if (message == "exit") {
             break;
@@ -70,33 +104,14 @@ int main() {
             cout << "Failed to send message.\n";
             break;
         }
-
-        char buffer[1024];
-
-        int bytesReceived = recv(
-            clientSocket,
-            buffer,
-            sizeof(buffer) - 1,
-            0
-        );
-
-        if (bytesReceived == SOCKET_ERROR) {
-            cout << "Failed to receive server reply.\n";
-            break;
-        }
-
-        if (bytesReceived == 0) {
-            cout << "Server disconnected.\n";
-            break;
-        }
-
-        buffer[bytesReceived] = '\0';
-
-        cout << "Server: "
-             << buffer << "\n";
     }
 
     closesocket(clientSocket);
+
+    if (receiver.joinable()) {
+        receiver.detach();
+    }
+
     WSACleanup();
 
     return 0;
