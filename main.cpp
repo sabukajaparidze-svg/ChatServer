@@ -1,10 +1,47 @@
 #include <iostream>
-#include <string>
+#include <thread>
 #include <winsock2.h>
 
 #pragma comment(lib, "ws2_32.lib")
 
 using namespace std;
+
+void handleClient(SOCKET clientSocket) {
+    cout << "A client connected!\n";
+
+    char buffer[1024];
+
+    while (true) {
+        int bytesReceived = recv(
+            clientSocket,
+            buffer,
+            sizeof(buffer) - 1,
+            0
+        );
+
+        if (bytesReceived <= 0) {
+            cout << "A client disconnected.\n";
+            break;
+        }
+
+        buffer[bytesReceived] = '\0';
+
+        cout << "Client says: "
+             << buffer << "\n";
+
+        string response =
+            "Server received: " + string(buffer);
+
+        send(
+            clientSocket,
+            response.c_str(),
+            static_cast<int>(response.size()),
+            0
+        );
+    }
+
+    closesocket(clientSocket);
+}
 
 int main() {
     WSADATA wsaData;
@@ -14,7 +51,11 @@ int main() {
         return 1;
     }
 
-    SOCKET serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+    SOCKET serverSocket = socket(
+        AF_INET,
+        SOCK_STREAM,
+        0
+    );
 
     if (serverSocket == INVALID_SOCKET) {
         cout << "Socket creation failed.\n";
@@ -39,7 +80,7 @@ int main() {
         return 1;
     }
 
-    if (listen(serverSocket, 5) == SOCKET_ERROR) {
+    if (listen(serverSocket, 10) == SOCKET_ERROR) {
         cout << "Listen failed.\n";
         closesocket(serverSocket);
         WSACleanup();
@@ -49,65 +90,28 @@ int main() {
     cout << "=================================\n";
     cout << "       Chat Server Started       \n";
     cout << "=================================\n";
-    cout << "Waiting for a client...\n";
-
-    SOCKET clientSocket = accept(
-        serverSocket,
-        nullptr,
-        nullptr
-    );
-
-    if (clientSocket == INVALID_SOCKET) {
-        cout << "Accept failed.\n";
-        closesocket(serverSocket);
-        WSACleanup();
-        return 1;
-    }
-
-    cout << "Client connected!\n";
-
-    char buffer[1024];
+    cout << "Waiting for clients...\n";
 
     while (true) {
-        int bytesReceived = recv(
-            clientSocket,
-            buffer,
-            sizeof(buffer) - 1,
-            0
+        SOCKET clientSocket = accept(
+            serverSocket,
+            nullptr,
+            nullptr
         );
 
-        if (bytesReceived == 0) {
-            cout << "Client disconnected.\n";
-            break;
+        if (clientSocket == INVALID_SOCKET) {
+            cout << "Accept failed.\n";
+            continue;
         }
 
-        if (bytesReceived == SOCKET_ERROR) {
-            cout << "Receive failed.\n";
-            break;
-        }
-
-        buffer[bytesReceived] = '\0';
-
-        cout << "Client says: "
-             << buffer << "\n";
-
-        string response =
-            "Server received: " + string(buffer);
-
-        int bytesSent = send(
-            clientSocket,
-            response.c_str(),
-            static_cast<int>(response.size()),
-            0
+        thread clientThread(
+            handleClient,
+            clientSocket
         );
 
-        if (bytesSent == SOCKET_ERROR) {
-            cout << "Send failed.\n";
-            break;
-        }
+        clientThread.detach();
     }
 
-    closesocket(clientSocket);
     closesocket(serverSocket);
     WSACleanup();
 
