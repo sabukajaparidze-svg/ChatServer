@@ -77,7 +77,20 @@ int main() {
 
     if (bytesReceived > 0) {
         buffer[bytesReceived] = '\0';
-        cout << "Client says: " << buffer << "\n";
+
+        cout << "Client says: "
+             << buffer << "\n";
+
+        string response = "Hello from the server!";
+
+        send(
+            clientSocket,
+            response.c_str(),
+            static_cast<int>(response.size()),
+            0
+        );
+
+        cout << "Reply sent!\n";
     }
     else {
         cout << "Failed to receive message.\n";

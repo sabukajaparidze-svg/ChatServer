@@ -52,14 +52,43 @@ int main() {
     cout << "Enter a message: ";
     getline(cin >> ws, message);
 
-    send(
+    int bytesSent = send(
         clientSocket,
         message.c_str(),
         static_cast<int>(message.size()),
         0
     );
 
+    if (bytesSent == SOCKET_ERROR) {
+        cout << "Failed to send message.\n";
+        closesocket(clientSocket);
+        WSACleanup();
+        return 1;
+    }
+
     cout << "Message sent!\n";
+
+    char buffer[1024];
+
+    int bytesReceived = recv(
+        clientSocket,
+        buffer,
+        sizeof(buffer) - 1,
+        0
+    );
+
+    if (bytesReceived == SOCKET_ERROR) {
+        cout << "Failed to receive server reply.\n";
+    }
+    else if (bytesReceived == 0) {
+        cout << "Server closed the connection.\n";
+    }
+    else {
+        buffer[bytesReceived] = '\0';
+
+        cout << "Server says: "
+             << buffer << "\n";
+    }
 
     closesocket(clientSocket);
     WSACleanup();
