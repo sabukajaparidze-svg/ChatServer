@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <ctime>
 #include <fstream>
+#include <atomic>
 #include <winsock2.h>
 
 #pragma comment(lib, "ws2_32.lib")
@@ -26,6 +27,10 @@ struct Client {
 vector<Client> clients;
 mutex clientsMutex;
 mutex historyMutex;
+
+atomic<bool> serverRunning(true);
+
+SOCKET serverSocket = INVALID_SOCKET;
 
 string getTimestamp() {
     auto now = chrono::system_clock::now();
@@ -128,6 +133,81 @@ string getOnlineUsers() {
     }
 
     return result;
+}
+
+void disconnectAllClients() {
+    lock_guard<mutex> lock(clientsMutex);
+
+    for (const Client& client : clients) {
+        sendToClient(
+            client.socket,
+            "\nServer is shutting down.\n"
+        );
+
+        shutdown(
+            client.socket,
+            SD_BOTH
+        );
+
+        closesocket(client.socket);
+    }
+
+    clients.clear();
+}
+
+void serverConsole() {
+    while (serverRunning) {
+        string command;
+
+        if (!getline(cin, command)) {
+            break;
+        }
+
+        if (command == "/status") {
+            lock_guard<mutex> lock(clientsMutex);
+
+            cout << "\n========== SERVER STATUS ==========\n";
+            cout << "Server: RUNNING\n";
+            cout << "Port: 55000\n";
+            cout << "Connected clients: "
+                 << clients.size() << "\n";
+
+            if (clients.empty()) {
+                cout << "No clients connected.\n";
+            }
+            else {
+                cout << "Users:\n";
+
+                for (const Client& client : clients) {
+                    cout << "- "
+                         << client.username
+                         << "\n";
+                }
+            }
+
+            cout << "==================================\n\n";
+        }
+        else if (command == "/shutdown") {
+            cout << "\nShutting down server...\n";
+
+            serverRunning = false;
+
+            disconnectAllClients();
+
+            if (serverSocket != INVALID_SOCKET) {
+                closesocket(serverSocket);
+                serverSocket = INVALID_SOCKET;
+            }
+
+            break;
+        }
+        else if (!command.empty()) {
+            cout << "Unknown server command.\n";
+            cout << "Available commands:\n";
+            cout << "/status\n";
+            cout << "/shutdown\n";
+        }
+    }
 }
 
 void handleCommand(
@@ -291,7 +371,7 @@ void handleClient(SOCKET clientSocket) {
 
     saveToHistory(joinMessage);
 
-    while (true) {
+    while (serverRunning) {
         bytesReceived = recv(
             clientSocket,
             buffer,
@@ -341,9 +421,7 @@ void handleClient(SOCKET clientSocket) {
                 clientSocket
             );
 
-            saveToHistory(
-                formattedMessage
-            );
+            saveToHistory(formattedMessage);
         }
     }
 
@@ -362,15 +440,17 @@ void handleClient(SOCKET clientSocket) {
         );
     }
 
-    cout << username << " left the chat.\n";
+    if (serverRunning) {
+        cout << username << " left the chat.\n";
 
-    string leaveMessage =
-        getTimestamp() +
-        "*** " + username + " left the chat ***";
+        string leaveMessage =
+            getTimestamp() +
+            "*** " + username + " left the chat ***";
 
-    broadcastMessage(leaveMessage);
+        broadcastMessage(leaveMessage);
 
-    saveToHistory(leaveMessage);
+        saveToHistory(leaveMessage);
+    }
 
     closesocket(clientSocket);
 }
@@ -387,7 +467,7 @@ int main() {
         return 1;
     }
 
-    SOCKET serverSocket = socket(
+    serverSocket = socket(
         AF_INET,
         SOCK_STREAM,
         0
@@ -433,17 +513,27 @@ int main() {
     cout << "=================================\n";
     cout << "Port: 55000\n";
     cout << "Chat history: chat_history.txt\n";
+    cout << "Server commands: /status /shutdown\n";
     cout << "Waiting for clients...\n";
 
-    while (true) {
+    thread consoleThread(serverConsole);
+
+    while (serverRunning) {
         SOCKET clientSocket = accept(
             serverSocket,
             nullptr,
             nullptr
         );
 
+        if (!serverRunning) {
+            break;
+        }
+
         if (clientSocket == INVALID_SOCKET) {
-            cout << "Accept failed.\n";
+            if (serverRunning) {
+                cout << "Accept failed.\n";
+            }
+
             continue;
         }
 
@@ -455,8 +545,15 @@ int main() {
         clientThread.detach();
     }
 
-    closesocket(serverSocket);
+    serverRunning = false;
+
+    if (consoleThread.joinable()) {
+        consoleThread.detach();
+    }
+
     WSACleanup();
+
+    cout << "Server stopped.\n";
 
     return 0;
 }
