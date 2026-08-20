@@ -8,6 +8,7 @@
 #include <chrono>
 #include <iomanip>
 #include <ctime>
+#include <fstream>
 #include <winsock2.h>
 
 #pragma comment(lib, "ws2_32.lib")
@@ -24,6 +25,7 @@ struct Client {
 
 vector<Client> clients;
 mutex clientsMutex;
+mutex historyMutex;
 
 string getTimestamp() {
     auto now = chrono::system_clock::now();
@@ -40,6 +42,19 @@ string getTimestamp() {
     );
 
     return timestamp.str();
+}
+
+void saveToHistory(const string& message) {
+    lock_guard<mutex> lock(historyMutex);
+
+    ofstream historyFile(
+        "chat_history.txt",
+        ios::app
+    );
+
+    if (historyFile.is_open()) {
+        historyFile << message << "\n";
+    }
 }
 
 void sendToClient(
@@ -187,10 +202,20 @@ void handleCommand(
             return;
         }
 
-        sendToClient(
-            clientSocket,
+        string sentMessage =
             getTimestamp() +
             "[Private to " + target + "] " +
+            privateText;
+
+        sendToClient(
+            clientSocket,
+            sentMessage
+        );
+
+        saveToHistory(
+            getTimestamp() +
+            "[Private] [" + username +
+            " -> " + target + "] " +
             privateText
         );
 
@@ -255,11 +280,16 @@ void handleClient(SOCKET clientSocket) {
 
     cout << username << " joined the chat.\n";
 
-    broadcastMessage(
+    string joinMessage =
         getTimestamp() +
-        "*** " + username + " joined the chat ***",
+        "*** " + username + " joined the chat ***";
+
+    broadcastMessage(
+        joinMessage,
         clientSocket
     );
+
+    saveToHistory(joinMessage);
 
     while (true) {
         bytesReceived = recv(
@@ -310,6 +340,10 @@ void handleClient(SOCKET clientSocket) {
                 formattedMessage,
                 clientSocket
             );
+
+            saveToHistory(
+                formattedMessage
+            );
         }
     }
 
@@ -330,10 +364,13 @@ void handleClient(SOCKET clientSocket) {
 
     cout << username << " left the chat.\n";
 
-    broadcastMessage(
+    string leaveMessage =
         getTimestamp() +
-        "*** " + username + " left the chat ***"
-    );
+        "*** " + username + " left the chat ***";
+
+    broadcastMessage(leaveMessage);
+
+    saveToHistory(leaveMessage);
 
     closesocket(clientSocket);
 }
@@ -395,6 +432,7 @@ int main() {
     cout << "       Chat Server Started       \n";
     cout << "=================================\n";
     cout << "Port: 55000\n";
+    cout << "Chat history: chat_history.txt\n";
     cout << "Waiting for clients...\n";
 
     while (true) {
