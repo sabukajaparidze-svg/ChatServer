@@ -4,6 +4,7 @@
 #include <vector>
 #include <mutex>
 #include <algorithm>
+#include <sstream>
 #include <winsock2.h>
 
 #pragma comment(lib, "ws2_32.lib")
@@ -40,10 +41,126 @@ void broadcastMessage(
     }
 }
 
+bool sendPrivateMessage(
+    const string& sender,
+    const string& target,
+    const string& message
+) {
+    lock_guard<mutex> lock(clientsMutex);
+
+    for (const Client& client : clients) {
+        if (client.username == target) {
+            string privateMessage =
+                "[Private from " + sender + "] " + message;
+
+            sendToClient(
+                client.socket,
+                privateMessage
+            );
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
+string getOnlineUsers() {
+    lock_guard<mutex> lock(clientsMutex);
+
+    string result = "Online users:\n";
+
+    for (const Client& client : clients) {
+        result += "- " + client.username + "\n";
+    }
+
+    return result;
+}
+
+void handleCommand(
+    SOCKET clientSocket,
+    const string& username,
+    const string& message
+) {
+    if (message == "/help") {
+        string help =
+            "\nAvailable commands:\n"
+            "/help - Show commands\n"
+            "/users - Show online users\n"
+            "/msg <username> <message> - Private message\n"
+            "exit - Leave the chat\n";
+
+        sendToClient(clientSocket, help);
+        return;
+    }
+
+    if (message == "/users") {
+        sendToClient(
+            clientSocket,
+            getOnlineUsers()
+        );
+
+        return;
+    }
+
+    if (message.rfind("/msg ", 0) == 0) {
+        string command = message.substr(5);
+
+        stringstream stream(command);
+
+        string target;
+        stream >> target;
+
+        string privateText;
+        getline(stream, privateText);
+
+        if (target.empty() || privateText.empty()) {
+            sendToClient(
+                clientSocket,
+                "Usage: /msg <username> <message>"
+            );
+
+            return;
+        }
+
+        if (privateText[0] == ' ') {
+            privateText.erase(0, 1);
+        }
+
+        bool sent = sendPrivateMessage(
+            username,
+            target,
+            privateText
+        );
+
+        if (sent) {
+            sendToClient(
+                clientSocket,
+                "[Private to " + target + "] " + privateText
+            );
+        }
+        else {
+            sendToClient(
+                clientSocket,
+                "User '" + target + "' is not online."
+            );
+        }
+
+        return;
+    }
+
+    string formattedMessage =
+        "[" + username + "] " + message;
+
+    broadcastMessage(
+        formattedMessage,
+        clientSocket
+    );
+}
+
 void handleClient(SOCKET clientSocket) {
     char buffer[1024];
 
-    // Receive username
     int bytesReceived = recv(
         clientSocket,
         buffer,
@@ -60,7 +177,6 @@ void handleClient(SOCKET clientSocket) {
 
     string username = buffer;
 
-    // Add client
     {
         lock_guard<mutex> lock(clientsMutex);
 
@@ -72,12 +188,11 @@ void handleClient(SOCKET clientSocket) {
 
     cout << username << " joined the chat.\n";
 
-    string joinMessage =
-        "*** " + username + " joined the chat ***";
+    broadcastMessage(
+        "*** " + username + " joined the chat ***",
+        clientSocket
+    );
 
-    broadcastMessage(joinMessage, clientSocket);
-
-    // Receive messages
     while (true) {
         bytesReceived = recv(
             clientSocket,
@@ -97,16 +212,28 @@ void handleClient(SOCKET clientSocket) {
         cout << "[" << username << "] "
              << message << "\n";
 
-        string formattedMessage =
-            "[" + username + "] " + message;
+        if (message == "exit") {
+            break;
+        }
 
-        broadcastMessage(
-            formattedMessage,
-            clientSocket
-        );
+        if (!message.empty() && message[0] == '/') {
+            handleCommand(
+                clientSocket,
+                username,
+                message
+            );
+        }
+        else {
+            string formattedMessage =
+                "[" + username + "] " + message;
+
+            broadcastMessage(
+                formattedMessage,
+                clientSocket
+            );
+        }
     }
 
-    // Remove client
     {
         lock_guard<mutex> lock(clientsMutex);
 
@@ -124,10 +251,9 @@ void handleClient(SOCKET clientSocket) {
 
     cout << username << " left the chat.\n";
 
-    string leaveMessage =
-        "*** " + username + " left the chat ***";
-
-    broadcastMessage(leaveMessage);
+    broadcastMessage(
+        "*** " + username + " left the chat ***"
+    );
 
     closesocket(clientSocket);
 }

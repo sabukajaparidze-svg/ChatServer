@@ -101,10 +101,6 @@ int main() {
         cout << "Enter message: ";
         getline(cin, message);
 
-        if (message == "exit") {
-            break;
-        }
-
         int bytesSent = send(
             clientSocket,
             message.c_str(),
@@ -114,6 +110,10 @@ int main() {
 
         if (bytesSent == SOCKET_ERROR) {
             cout << "Failed to send message.\n";
+            break;
+        }
+
+        if (message == "exit") {
             break;
         }
     }
