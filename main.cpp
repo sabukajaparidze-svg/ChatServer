@@ -5,6 +5,9 @@
 #include <mutex>
 #include <algorithm>
 #include <sstream>
+#include <chrono>
+#include <iomanip>
+#include <ctime>
 #include <winsock2.h>
 
 #pragma comment(lib, "ws2_32.lib")
@@ -22,7 +25,27 @@ struct Client {
 vector<Client> clients;
 mutex clientsMutex;
 
-void sendToClient(SOCKET clientSocket, const string& message) {
+string getTimestamp() {
+    auto now = chrono::system_clock::now();
+    time_t currentTime = chrono::system_clock::to_time_t(now);
+
+    tm localTime{};
+    localtime_s(&localTime, &currentTime);
+
+    stringstream timestamp;
+
+    timestamp << put_time(
+        &localTime,
+        "[%H:%M:%S] "
+    );
+
+    return timestamp.str();
+}
+
+void sendToClient(
+    SOCKET clientSocket,
+    const string& message
+) {
     send(
         clientSocket,
         message.c_str(),
@@ -64,7 +87,9 @@ bool sendPrivateMessage(
     for (const Client& client : clients) {
         if (client.username == target) {
             string privateMessage =
-                "[Private from " + sender + "] " + message;
+                getTimestamp() +
+                "[Private from " + sender + "] " +
+                message;
 
             sendToClient(
                 client.socket,
@@ -164,7 +189,9 @@ void handleCommand(
 
         sendToClient(
             clientSocket,
-            "[Private to " + target + "] " + privateText
+            getTimestamp() +
+            "[Private to " + target + "] " +
+            privateText
         );
 
         return;
@@ -229,6 +256,7 @@ void handleClient(SOCKET clientSocket) {
     cout << username << " joined the chat.\n";
 
     broadcastMessage(
+        getTimestamp() +
         "*** " + username + " joined the chat ***",
         clientSocket
     );
@@ -274,7 +302,9 @@ void handleClient(SOCKET clientSocket) {
         }
         else {
             string formattedMessage =
-                "[" + username + "] " + message;
+                getTimestamp() +
+                "[" + username + "] " +
+                message;
 
             broadcastMessage(
                 formattedMessage,
@@ -301,6 +331,7 @@ void handleClient(SOCKET clientSocket) {
     cout << username << " left the chat.\n";
 
     broadcastMessage(
+        getTimestamp() +
         "*** " + username + " left the chat ***"
     );
 
