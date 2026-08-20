@@ -78,6 +78,18 @@ int main() {
     cout << "       Connected to Server       \n";
     cout << "=================================\n";
 
+    string username;
+
+    cout << "Enter your username: ";
+    getline(cin, username);
+
+    send(
+        clientSocket,
+        username.c_str(),
+        static_cast<int>(username.size()),
+        0
+    );
+
     thread receiver(
         receiveMessages,
         clientSocket

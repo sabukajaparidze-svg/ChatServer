@@ -10,36 +10,76 @@
 
 using namespace std;
 
-vector<SOCKET> clients;
+struct Client {
+    SOCKET socket;
+    string username;
+};
+
+vector<Client> clients;
 mutex clientsMutex;
 
-void broadcastMessage(const string& message, SOCKET senderSocket) {
+void sendToClient(SOCKET clientSocket, const string& message) {
+    send(
+        clientSocket,
+        message.c_str(),
+        static_cast<int>(message.size()),
+        0
+    );
+}
+
+void broadcastMessage(
+    const string& message,
+    SOCKET senderSocket = INVALID_SOCKET
+) {
     lock_guard<mutex> lock(clientsMutex);
 
-    for (SOCKET client : clients) {
-        if (client != senderSocket) {
-            send(
-                client,
-                message.c_str(),
-                static_cast<int>(message.size()),
-                0
-            );
+    for (const Client& client : clients) {
+        if (client.socket != senderSocket) {
+            sendToClient(client.socket, message);
         }
     }
 }
 
 void handleClient(SOCKET clientSocket) {
-    cout << "A client connected!\n";
-
-    {
-        lock_guard<mutex> lock(clientsMutex);
-        clients.push_back(clientSocket);
-    }
-
     char buffer[1024];
 
+    // Receive username
+    int bytesReceived = recv(
+        clientSocket,
+        buffer,
+        sizeof(buffer) - 1,
+        0
+    );
+
+    if (bytesReceived <= 0) {
+        closesocket(clientSocket);
+        return;
+    }
+
+    buffer[bytesReceived] = '\0';
+
+    string username = buffer;
+
+    // Add client
+    {
+        lock_guard<mutex> lock(clientsMutex);
+
+        clients.push_back({
+            clientSocket,
+            username
+        });
+    }
+
+    cout << username << " joined the chat.\n";
+
+    string joinMessage =
+        "*** " + username + " joined the chat ***";
+
+    broadcastMessage(joinMessage, clientSocket);
+
+    // Receive messages
     while (true) {
-        int bytesReceived = recv(
+        bytesReceived = recv(
             clientSocket,
             buffer,
             sizeof(buffer) - 1,
@@ -47,7 +87,6 @@ void handleClient(SOCKET clientSocket) {
         );
 
         if (bytesReceived <= 0) {
-            cout << "A client disconnected.\n";
             break;
         }
 
@@ -55,27 +94,40 @@ void handleClient(SOCKET clientSocket) {
 
         string message = buffer;
 
-        cout << "Client says: "
+        cout << "[" << username << "] "
              << message << "\n";
 
-        string broadcast =
-            "Client: " + message;
+        string formattedMessage =
+            "[" + username + "] " + message;
 
-        broadcastMessage(broadcast, clientSocket);
+        broadcastMessage(
+            formattedMessage,
+            clientSocket
+        );
     }
 
+    // Remove client
     {
         lock_guard<mutex> lock(clientsMutex);
 
         clients.erase(
-            remove(
+            remove_if(
                 clients.begin(),
                 clients.end(),
-                clientSocket
+                [clientSocket](const Client& client) {
+                    return client.socket == clientSocket;
+                }
             ),
             clients.end()
         );
     }
+
+    cout << username << " left the chat.\n";
+
+    string leaveMessage =
+        "*** " + username + " left the chat ***";
+
+    broadcastMessage(leaveMessage);
 
     closesocket(clientSocket);
 }
